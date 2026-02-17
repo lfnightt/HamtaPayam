@@ -131,7 +131,7 @@
     }
   };
 
-  const openChat = (chatId) => {
+  let openChat = (chatId) => {
     const chat = chats[chatId];
     if (!chat) return;
 
@@ -154,7 +154,6 @@
 
   const msgMenu = document.createElement('div');
   msgMenu.className = 'msg-menu';
-  msgMenu.style.cssText = 'width:auto;min-width:auto;white-space:nowrap;';
   msgMenu.innerHTML = `
     <button class="msg-menu__item" type="button" data-action="edit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i><span>Edit</span></button>
     <button class="msg-menu__item" type="button" data-action="copy"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>
@@ -209,16 +208,10 @@
       actionDelete.style.color = '#E85354';
     }
 
-    // Force reflow to get accurate measurements after hiding items
-    void msgMenu.offsetHeight;
-
     msgMenu.style.visibility = 'hidden';
     msgMenu.style.left = '0px';
     msgMenu.style.top = '0px';
     msgMenu.classList.add('is-open');
-
-    // Another reflow after adding class
-    void msgMenu.offsetHeight;
 
     const rect = msgMenu.getBoundingClientRect();
     const w = rect.width || 194;
@@ -743,12 +736,140 @@
   const composerInput = document.querySelector('.composer__input');
   const sendBtn = document.querySelector('.composer__mic');
 
+  // Mobile Navigation Setup
+  const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+  const isTouchDevice = () => window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+  // Add back button to chat header
+  const chatHeader = chatRoot.querySelector('.chat__header');
+  const backBtn = document.createElement('button');
+  backBtn.className = 'mobile-back-btn';
+  backBtn.type = 'button';
+  backBtn.setAttribute('aria-label', 'Back');
+  backBtn.innerHTML = '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i>';
+  if (chatHeader) {
+    chatHeader.insertBefore(backBtn, chatHeader.firstChild);
+  }
+
+  // Add swipe handle indicator
+  const swipeHandle = document.createElement('div');
+  swipeHandle.className = 'swipe-handle';
+  chatRoot.appendChild(swipeHandle);
+
+  // Mobile navigation functions
+  const openMobileChat = () => {
+    if (!isMobile()) return;
+    chatRoot.classList.add('is-open');
+    document.body.classList.add('chat-open');
+    sidebarRoot.classList.add('slide-out');
+  };
+
+  const closeMobileChat = () => {
+    if (!isMobile()) return;
+    chatRoot.classList.remove('is-open');
+    document.body.classList.remove('chat-open');
+    sidebarRoot.classList.remove('slide-out');
+  };
+
+  // Back button click
+  backBtn.addEventListener('click', () => {
+    closeMobileChat();
+  });
+
+  // Override openChat to handle mobile
+  let originalOpenChat = openChat;
+  openChat = (chatId) => {
+    originalOpenChat(chatId);
+    if (isMobile()) {
+      openMobileChat();
+    }
+  };
+
+  // Touch/Swipe handling
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchCurrentX = 0;
+  let isSwiping = false;
+  let swipeThreshold = 80;
+  const swipeAreaWidth = 40;
+
+  chatRoot.addEventListener('touchstart', (e) => {
+    if (!isMobile() || !chatRoot.classList.contains('is-open')) return;
+    
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    
+    // Only allow swipe from left edge
+    if (touchStartX > swipeAreaWidth) return;
+    
+    isSwiping = true;
+    chatRoot.classList.add('swiping');
+  }, { passive: true });
+
+  chatRoot.addEventListener('touchmove', (e) => {
+    if (!isSwiping || !isMobile()) return;
+    
+    const touch = e.touches[0];
+    touchCurrentX = touch.clientX;
+    
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // Check if horizontal swipe
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      // Only allow right swipe (positive deltaX)
+      if (deltaX > 0) {
+        const translateX = Math.min(deltaX, window.innerWidth * 0.8);
+        chatRoot.style.transform = `translateX(${translateX}px)`;
+        
+        // Fade sidebar back in
+        const sidebarOpacity = Math.min(deltaX / (window.innerWidth * 0.3), 1);
+        sidebarRoot.style.opacity = sidebarOpacity;
+        sidebarRoot.style.transform = `translateX(${(1 - sidebarOpacity) * -30}%)`;
+      }
+    }
+  }, { passive: true });
+
+  const endSwipe = () => {
+    if (!isSwiping) return;
+    isSwiping = false;
+    
+    chatRoot.classList.remove('swiping');
+    const deltaX = touchCurrentX - touchStartX;
+    
+    // Reset styles
+    chatRoot.style.transform = '';
+    sidebarRoot.style.opacity = '';
+    sidebarRoot.style.transform = '';
+    
+    // If swiped past threshold, close chat
+    if (deltaX > swipeThreshold) {
+      closeMobileChat();
+    }
+  };
+
+  chatRoot.addEventListener('touchend', endSwipe, { passive: true });
+  chatRoot.addEventListener('touchcancel', endSwipe, { passive: true });
+
+  // Handle resize - reset mobile states on desktop
+  let lastWasMobile = isMobile();
+  window.addEventListener('resize', () => {
+    const nowMobile = isMobile();
+    if (lastWasMobile && !nowMobile) {
+      // Switched to desktop
+      closeMobileChat();
+    }
+    lastWasMobile = nowMobile;
+  }, { passive: true });
+
   if (sendBtn) sendBtn.setAttribute('aria-label', 'Send');
 
   // Typing detection
   let typingTimeout = null;
   const sendTyping = (isTyping) => {
     if (!WORKER_BASE_URL) return;
+    // ... (rest of the code remains the same)
     fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/send?room=${encodeURIComponent(ROOM_ID)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
