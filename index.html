@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,shrink-to-fit=no,viewport-fit=cover" />
+    <title>HamtaPayam</title>
+    <meta name="description" content="HamtaPayam is a simple messenger UI." />
+    <meta name="theme-color" content="#212121" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-title" content="HamtaPayam" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="HamtaPayam" />
+    <meta name="application-name" content="HamtaPayam" />
+    <meta name="google" content="notranslate" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+  </head>
+  <body>
+    <div class="chat-background" aria-hidden="true">
+      <div class="chat-background-item is-pattern is-dark is-visible">
+        <canvas width="50" height="50" data-colors="#fec496,#dd6cb9,#962fbf,#4f5bd5" class="chat-background-item-canvas chat-background-item-color-canvas chat-background-item-scalable" style="--opacity-max: 0.3;"></canvas>
+        <canvas data-original-height="777" width="626" height="777" class="chat-background-item-canvas chat-background-item-pattern-canvas"></canvas>
+      </div>
+    </div>
+
+    <aside class="sidebar" aria-label="Primary">
+      <header class="sidebar__header">
+        <button class="icon-button" type="button" aria-label="Open menu">
+          <span class="hamburger" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
+
+        <form class="search" role="search" aria-label="Search">
+          <input class="search__input" type="search" placeholder="Search" aria-label="Search" />
+        </form>
+      </header>
+
+      <div class="sidebar__content">
+        <div class="chat-list" role="list">
+          <button class="chat-item" type="button" role="listitem" aria-label="Public chat" data-chat-id="public">
+            <div class="chat-item__avatar chat-item__avatar--purple" aria-hidden="true">P</div>
+            <div class="chat-item__meta">
+              <div class="chat-item__top">
+                <div class="chat-item__name">Public Chat</div>
+                <div class="chat-item__time"> </div>
+              </div>
+              <div class="chat-item__bottom">
+                <div class="chat-item__preview">Send a message…</div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-fab" aria-label="Create">
+        <button class="sidebar-fab__btn" type="button" aria-label="Create" aria-haspopup="menu" aria-expanded="false">
+          <i class="fa-solid fa-pen" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <section class="sidebar-overlay" role="dialog" aria-label="Create" aria-hidden="true">
+        <header class="sidebar-overlay__header">
+          <button class="sidebar-overlay__back" type="button" aria-label="Back">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          </button>
+          <div class="sidebar-overlay__title">New Channel</div>
+        </header>
+
+        <div class="sidebar-overlay__content">
+          <button class="overlay-avatar" type="button" aria-label="Add photo">
+            <i class="fa-solid fa-camera" aria-hidden="true"></i>
+            <i class="fa-solid fa-plus overlay-avatar__plus" aria-hidden="true"></i>
+          </button>
+
+          <form class="overlay-form" autocomplete="off">
+            <input class="overlay-input overlay-input--name" type="text" placeholder="Channel name" aria-label="Channel name" />
+            <input class="overlay-input overlay-input--desc" type="text" placeholder="Description (optional)" aria-label="Description" />
+          </form>
+        </div>
+
+        <button class="overlay-next" type="button" aria-label="Next">
+          <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+        </button>
+      </section>
+    </aside>
+
+    <main class="chat" aria-label="Chat">
+      <header class="chat__header" aria-label="Chat header">
+        <div class="chat__title">
+          <div class="chat__name">Public Chat</div>
+          <div class="chat__status">public</div>
+        </div>
+        <div class="chat__actions">
+          <button class="icon-button icon-button--small" type="button" aria-label="Search in chat">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          </button>
+          <button class="icon-button icon-button--small" type="button" aria-label="More">
+            <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+
+      <section class="chat__messages" aria-label="Messages">
+        <div class="message message--in">
+          <div class="message__bubble">Hey! Welcome to HamtaPayam.</div>
+          <div class="message__meta">11:40</div>
+        </div>
+        <div class="message message--out">
+          <div class="message__bubble">Looks nice. Can we make it closer to Telegram?</div>
+          <div class="message__meta">11:41</div>
+        </div>
+        <div class="message message--in">
+          <div class="message__bubble">Yes—sidebar, chat header, message list, and composer.</div>
+          <div class="message__meta">11:42</div>
+        </div>
+      </section>
+
+      <footer class="chat__composer" aria-label="Message composer">
+        <div class="composer__wrap">
+          <div class="composer__bar">
+            <button class="composer__btn composer__btn--emoji" type="button" aria-label="Emoji" aria-haspopup="dialog" aria-expanded="false">
+              <i class="fa-regular fa-face-smile" aria-hidden="true"></i>
+            </button>
+
+            <div class="emoji-menu" role="dialog" aria-label="Emoji picker">
+              <emoji-picker class="emoji-picker"></emoji-picker>
+            </div>
+
+            <input class="composer__input" type="text" placeholder="Message" aria-label="Message" />
+
+            <button class="composer__btn" type="button" aria-label="Attach">
+              <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <button class="composer__mic" type="button" aria-label="Send">
+            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+          </button>
+        </div>
+      </footer>
+    </main>
+
+    <script src="./chat-background.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
