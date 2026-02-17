@@ -326,7 +326,7 @@
   let lastSeenTs = 0;
 
   const applyLocalEdit = (id, nextText) => {
-    if (!id) return;
+    if (!id) return false;
     const text = String(nextText ?? '');
 
     const chat = chats.public;
@@ -342,20 +342,22 @@
         fromList.edited = true;
       }
       messageMap.set(id, base);
-    }
 
-    const el = messageElements.get(id);
-    if (el) {
-      const bubble = el.querySelector('.message__bubble');
-      const meta = el.querySelector('.message__meta');
-      if (bubble) bubble.textContent = text;
-      if (meta) {
-        const timeText = base && typeof base.time === 'string' ? base.time : formatTime(new Date((base && base.ts) || Date.now()));
-        meta.textContent = timeText + ' (ویرایش شده)';
+      const el = messageElements.get(id);
+      if (el) {
+        const bubble = el.querySelector('.message__bubble');
+        const meta = el.querySelector('.message__meta');
+        if (bubble) bubble.textContent = text;
+        if (meta) {
+          const timeText = base && typeof base.time === 'string' ? base.time : formatTime(new Date((base && base.ts) || Date.now()));
+          meta.textContent = timeText + ' (ویرایش شده)';
+        }
       }
-    }
 
-    saveLocalMessages();
+      saveLocalMessages();
+      return true;
+    }
+    return false;
   };
 
   const ingestMessage = (m, isEdit = false, isDelete = false) => {
@@ -365,7 +367,11 @@
     const existing = messageMap.get(m.id);
     
     if (isEdit) {
-      applyLocalEdit(m.id, m.text);
+      const applied = applyLocalEdit(m.id, m.text);
+      if (!applied) {
+        // Message not found locally, ingest it as a new message (edited from elsewhere)
+        ingestMessage({ ...m, edited: true });
+      }
       return;
     }
 
