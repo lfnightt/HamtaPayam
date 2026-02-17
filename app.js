@@ -369,7 +369,9 @@
     if (isEdit) {
       const applied = applyLocalEdit(m.id, m.text);
       if (!applied) {
-        // Message not found locally, ingest it as a new message (edited from elsewhere)
+        // Message not found locally - force remove from seen and re-ingest
+        seenIds.delete(m.id);
+        messageElements.delete(m.id);
         ingestMessage({ ...m, edited: true });
       }
       return;
