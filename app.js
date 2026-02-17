@@ -34,6 +34,35 @@
   const headerStatus = chatRoot.querySelector('.chat__status');
   const messagesRoot = chatRoot.querySelector('.chat__messages');
 
+  // Online users count display
+  const onlineCountBadge = document.createElement('span');
+  onlineCountBadge.className = 'online-count';
+  onlineCountBadge.style.cssText = 'background:#00c853;color:#fff;padding:2px 8px;border-radius:12px;font-size:12px;margin-left:8px;';
+  if (headerStatus) headerStatus.appendChild(onlineCountBadge);
+
+  // Typing indicator
+  const typingIndicator = document.createElement('div');
+  typingIndicator.className = 'typing-indicator';
+  typingIndicator.style.cssText = 'padding:8px 16px;color:#888;font-size:13px;font-style:italic;display:none;';
+  typingIndicator.textContent = '';
+  if (messagesRoot) messagesRoot.parentNode.insertBefore(typingIndicator, messagesRoot.nextSibling);
+
+  // Reply preview
+  const replyPreview = document.createElement('div');
+  replyPreview.className = 'reply-preview';
+  replyPreview.style.cssText = 'padding:8px 16px;background:#f0f0f0;border-left:3px solid #0088cc;display:none;align-items:center;gap:8px;';
+  replyPreview.innerHTML = '<span class="reply-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666;"></span><button class="reply-cancel" style="background:none;border:none;cursor:pointer;font-size:18px;color:#999;">×</button>';
+  const composer = document.querySelector('.composer');
+  if (composer) composer.parentNode.insertBefore(replyPreview, composer);
+
+  let replyingTo = null;
+
+  replyPreview.querySelector('.reply-cancel').addEventListener('click', () => {
+    replyingTo = null;
+    replyPreview.style.display = 'none';
+    replyPreview.querySelector('.reply-text').textContent = '';
+  });
+
   const formatTime = (date) => {
     const h = String(date.getHours()).padStart(2, '0');
     const m = String(date.getMinutes()).padStart(2, '0');
@@ -65,25 +94,123 @@
   const renderMessages = (messages) => {
     if (!messagesRoot) return;
     messagesRoot.innerHTML = '';
+    messageElements.clear();
 
     for (const m of messages) {
-      const wrap = document.createElement('div');
-      wrap.className = `message message--${m.dir}`;
-
-      const bubble = document.createElement('div');
-      bubble.className = 'message__bubble';
-      bubble.textContent = m.text;
-
-      const meta = document.createElement('div');
-      meta.className = 'message__meta';
-      meta.textContent = m.time;
-
-      wrap.appendChild(bubble);
-      wrap.appendChild(meta);
-      messagesRoot.appendChild(wrap);
+      renderSingleMessage(m);
     }
 
     messagesRoot.scrollTop = messagesRoot.scrollHeight;
+  };
+
+  const messageElements = new Map();
+
+  const renderSingleMessage = (m, prepend = false) => {
+    const wrap = document.createElement('div');
+    wrap.className = `message message--${m.dir}`;
+    wrap.dataset.id = m.id;
+    wrap.dataset.uid = m.uid;
+    wrap.dataset.ts = m.ts;
+
+    // Reply indicator
+    if (m.replyTo) {
+      const replyBox = document.createElement('div');
+      replyBox.className = 'message__reply';
+      replyBox.style.cssText = 'font-size:12px;color:#0088cc;margin-bottom:4px;padding:4px 8px;background:rgba(0,136,204,0.1);border-radius:4px;';
+      replyBox.textContent = `↩ ${m.replyTo.text?.slice(0, 50) || '...'}`;
+      wrap.appendChild(replyBox);
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message__bubble';
+    bubble.textContent = m.text;
+    if (m.deleted) {
+      bubble.style.fontStyle = 'italic';
+      bubble.style.color = '#999';
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'message__meta';
+    let metaText = m.time;
+    if (m.edited) metaText += ' (ویرایش شده)';
+    meta.textContent = metaText;
+
+    wrap.appendChild(bubble);
+    wrap.appendChild(meta);
+
+    // Action buttons for own messages
+    if (m.uid === selfUid && !m.deleted) {
+      const actions = document.createElement('div');
+      actions.className = 'message__actions';
+      actions.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
+      
+      const canEdit = Date.now() - m.ts < 5 * 60 * 1000;
+      
+      if (canEdit) {
+        const editBtn = document.createElement('button');
+        editBtn.textContent = '✏️ ویرایش';
+        editBtn.style.cssText = 'font-size:11px;padding:2px 8px;border:none;background:#e3f2fd;border-radius:4px;cursor:pointer;';
+        editBtn.onclick = () => startEdit(m.id, m.text);
+        actions.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '🗑️ حذف';
+        deleteBtn.style.cssText = 'font-size:11px;padding:2px 8px;border:none;background:#ffebee;border-radius:4px;cursor:pointer;color:#c62828;';
+        deleteBtn.onclick = () => deleteMessage(m.id);
+        actions.appendChild(deleteBtn);
+      }
+
+      wrap.appendChild(actions);
+    }
+
+    // Reply button for all messages
+    const replyBtn = document.createElement('button');
+    replyBtn.textContent = '↩️';
+    replyBtn.title = 'پاسخ';
+    replyBtn.style.cssText = 'position:absolute;left:-28px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;opacity:0;transition:opacity 0.2s;';
+    wrap.style.position = 'relative';
+    wrap.appendChild(replyBtn);
+    
+    wrap.addEventListener('mouseenter', () => replyBtn.style.opacity = '1');
+    wrap.addEventListener('mouseleave', () => replyBtn.style.opacity = '0');
+    replyBtn.addEventListener('click', () => startReply(m));
+
+    if (prepend) {
+      messagesRoot.insertBefore(wrap, messagesRoot.firstChild);
+    } else {
+      messagesRoot.appendChild(wrap);
+    }
+    
+    messageElements.set(m.id, wrap);
+    return wrap;
+  };
+
+  const startReply = (msg) => {
+    replyingTo = msg;
+    replyPreview.style.display = 'flex';
+    replyPreview.querySelector('.reply-text').textContent = msg.text.slice(0, 100);
+    composerInput?.focus();
+  };
+
+  const startEdit = (id, text) => {
+    if (composerInput) {
+      composerInput.value = text;
+      composerInput.dataset.editing = id;
+      composerInput.focus();
+    }
+  };
+
+  const deleteMessage = async (id) => {
+    if (!WORKER_BASE_URL) return;
+    try {
+      await fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/delete?room=${encodeURIComponent(ROOM_ID)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, uid: selfUid }),
+      });
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
   };
 
   const openChat = (chatId) => {
@@ -265,12 +392,47 @@
   };
 
   const seenIds = new Set();
-  const ingestMessage = (m) => {
+  const messageMap = new Map();
+  let lastSeenTs = 0;
+
+  const ingestMessage = (m, isEdit = false, isDelete = false) => {
     if (!m || typeof m !== 'object') return;
     if (typeof m.id !== 'string' || !m.id) return;
+    
+    const existing = messageMap.get(m.id);
+    
+    if (isEdit && existing) {
+      existing.text = m.text;
+      existing.edited = true;
+      const el = messageElements.get(m.id);
+      if (el) {
+        el.querySelector('.message__bubble').textContent = m.text;
+        el.querySelector('.message__meta').textContent = formatTime(new Date(m.ts)) + ' (ویرایش شده)';
+      }
+      saveLocalMessages();
+      return;
+    }
+
+    if (isDelete && existing) {
+      existing.deleted = true;
+      existing.text = '[deleted]';
+      const el = messageElements.get(m.id);
+      if (el) {
+        const bubble = el.querySelector('.message__bubble');
+        bubble.textContent = '[deleted]';
+        bubble.style.fontStyle = 'italic';
+        bubble.style.color = '#999';
+        el.querySelector('.message__actions')?.remove();
+      }
+      saveLocalMessages();
+      return;
+    }
+
     if (seenIds.has(m.id)) return;
+    
     const text = typeof m.text === 'string' ? m.text : '';
-    if (!text.trim()) return;
+    if (!text.trim() && !m.deleted) return;
+    
     const ts = typeof m.ts === 'number' ? m.ts : Date.now();
     const uid = typeof m.uid === 'string' ? m.uid : 'anonymous';
 
@@ -283,19 +445,30 @@
       ts,
       dir: uid === selfUid ? 'out' : 'in',
       time: formatTime(new Date(ts)),
+      replyTo: m.replyTo || null,
+      edited: m.edited || false,
+      deleted: m.deleted || false,
     };
+
+    messageMap.set(m.id, ui);
+    if (typeof ui.ts === 'number' && ui.ts > lastSeenTs) lastSeenTs = ui.ts;
 
     const chat = chats.public;
     chat.messages.push(ui);
     chat.messages = chat.messages.slice(-200);
     saveLocalMessages();
-    renderMessages(chat.messages);
+    renderSingleMessage(ui);
     setChatListPreview('public', ui.text, ui.time);
+    messagesRoot.scrollTop = messagesRoot.scrollHeight;
   };
 
   const ingestHistory = (messages) => {
     if (!Array.isArray(messages)) return;
     for (const m of messages) ingestMessage(m);
+    const chat = chats.public;
+    for (const mm of chat.messages) {
+      if (mm && typeof mm.ts === 'number' && mm.ts > lastSeenTs) lastSeenTs = mm.ts;
+    }
   };
 
   const createFabBtn = document.querySelector('.sidebar-fab__btn');
@@ -491,46 +664,127 @@
 
   if (sendBtn) sendBtn.setAttribute('aria-label', 'Send');
 
+  // Typing detection
+  let typingTimeout = null;
+  const sendTyping = (isTyping) => {
+    if (!WORKER_BASE_URL) return;
+    fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/send?room=${encodeURIComponent(ROOM_ID)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'typing', uid: selfUid, isTyping }),
+    }).catch(() => {});
+  };
+
+  if (composerInput) {
+    composerInput.addEventListener('input', () => {
+      sendTyping(true);
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => sendTyping(false), 2000);
+    });
+  }
+
   let es = null;
   let esReconnectTimer = null;
+
+  let pollTimer = null;
+  let pollInFlight = false;
+
+  const pollHistory = async () => {
+    if (!WORKER_BASE_URL) return;
+    if (pollInFlight) return;
+    pollInFlight = true;
+
+    try {
+      const url = WORKER_BASE_URL.replace(/\/$/, '') + `/history?room=${encodeURIComponent(ROOM_ID)}&since=${encodeURIComponent(String(lastSeenTs || 0))}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (!data || !Array.isArray(data.messages)) return;
+      for (const m of data.messages) ingestMessage(m);
+    } catch {
+      return;
+    } finally {
+      pollInFlight = false;
+    }
+  };
+
+  const startPolling = () => {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+      void pollHistory();
+    }, 3000);
+    void pollHistory();
+  };
 
   const connectStream = () => {
     if (!WORKER_BASE_URL) return;
     if (es) return;
 
-    const sseUrl = WORKER_BASE_URL.replace(/\/$/, '') + `/sse?room=${encodeURIComponent(ROOM_ID)}`;
+    const sseUrl = WORKER_BASE_URL.replace(/\/$/, '') + `/sse?room=${encodeURIComponent(ROOM_ID)}&uid=${encodeURIComponent(selfUid)}`;
     es = new EventSource(sseUrl);
 
     es.addEventListener('open', () => {
       console.log('[SSE] connected', sseUrl);
     });
 
-    const handlePayload = (raw) => {
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        return;
-      }
-
-      if (!data || typeof data.type !== 'string') return;
-      if (data.type === 'history') {
-        ingestHistory(data.messages);
-        return;
-      }
-      if (data.type === 'msg' && data.message) {
-        ingestMessage(data.message);
-      }
-    };
-
     es.addEventListener('history', (evt) => {
       if (!evt || typeof evt.data !== 'string') return;
-      handlePayload(evt.data);
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'history') ingestHistory(data.messages);
+      } catch {}
     });
 
     es.addEventListener('msg', (evt) => {
       if (!evt || typeof evt.data !== 'string') return;
-      handlePayload(evt.data);
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'msg' && data.message) ingestMessage(data.message);
+      } catch {}
+    });
+
+    es.addEventListener('edit', (evt) => {
+      if (!evt || typeof evt.data !== 'string') return;
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'edit' && data.message) ingestMessage(data.message, true, false);
+      } catch {}
+    });
+
+    es.addEventListener('delete', (evt) => {
+      if (!evt || typeof evt.data !== 'string') return;
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'delete' && data.message) ingestMessage(data.message, false, true);
+      } catch {}
+    });
+
+    es.addEventListener('typing', (evt) => {
+      if (!evt || typeof evt.data !== 'string') return;
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'typing') {
+          const others = data.users.filter(u => u !== selfUid);
+          if (others.length > 0) {
+            typingIndicator.textContent = others.length === 1 
+              ? 'یک نفر در حال نوشتن...' 
+              : `${others.length} نفر در حال نوشتن...`;
+            typingIndicator.style.display = 'block';
+          } else {
+            typingIndicator.style.display = 'none';
+          }
+        }
+      } catch {}
+    });
+
+    es.addEventListener('presence', (evt) => {
+      if (!evt || typeof evt.data !== 'string') return;
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'presence') {
+          onlineCountBadge.textContent = `${data.count} آنلاین`;
+        }
+      } catch {}
     });
 
     const scheduleReconnect = () => {
@@ -540,7 +794,7 @@
       esReconnectTimer = setTimeout(() => {
         esReconnectTimer = null;
         if (es) {
-          try { es.close(); } catch { /* noop */ }
+          try { es.close(); } catch {}
         }
         es = null;
         connectStream();
@@ -558,30 +812,43 @@
     const text = composerInput.value.trim();
     if (!text) return;
 
-    const msg = {
-      id: (crypto && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : String(Date.now()),
-      uid: selfUid,
-      text,
-      ts: Date.now(),
-    };
+    const editingId = composerInput.dataset.editing;
 
-    composerInput.value = '';
+    if (editingId) {
+      // Edit mode
+      fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/edit?room=${encodeURIComponent(ROOM_ID)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, text, uid: selfUid }),
+      }).catch(() => {});
+      
+      delete composerInput.dataset.editing;
+    } else {
+      // Send new message
+      const msg = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        uid: selfUid,
+        text,
+        ts: Date.now(),
+        replyTo: replyingTo ? { id: replyingTo.id, text: replyingTo.text.slice(0, 100) } : null,
+      };
 
-    ingestMessage(msg);
+      ingestMessage(msg);
 
-    if (WORKER_BASE_URL) {
-      try {
-        void fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/send?room=${encodeURIComponent(ROOM_ID)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(msg),
-          }
-        );
-      } catch {
-        return;
+      if (WORKER_BASE_URL) {
+        fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/send?room=${encodeURIComponent(ROOM_ID)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msg),
+        }).catch(() => {});
       }
     }
+
+    composerInput.value = '';
+    replyingTo = null;
+    replyPreview.style.display = 'none';
+    replyPreview.querySelector('.reply-text').textContent = '';
+    sendTyping(false);
   };
 
   const setEmojiOpen = (open) => {
@@ -642,9 +909,11 @@
   loadLocalMessages();
   for (const m of chats.public.messages) {
     if (m && typeof m.id === 'string') seenIds.add(m.id);
+    if (m && typeof m.ts === 'number' && m.ts > lastSeenTs) lastSeenTs = m.ts;
   }
 
   connectStream();
+  startPolling();
 
   openChat('public');
 })();
