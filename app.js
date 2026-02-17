@@ -191,23 +191,6 @@
 
   const openMsgMenuUnderCursor = (bubble, clientX, clientY) => {
     const margin = 8;
-    const w = 194;
-    const h = 170;
-
-    let left = clientX;
-    let top = clientY + margin;
-
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    if (left + w + margin > vw) left = vw - w - margin;
-    if (left < margin) left = margin;
-
-    if (top + h + margin > vh) top = clientY - h - margin;
-    if (top < margin) top = margin;
-
-    msgMenu.style.left = left + 'px';
-    msgMenu.style.top = top + 'px';
     msgMenuTarget = bubble;
     msgMenuTargetWrap = bubble.closest('.message');
 
@@ -225,7 +208,30 @@
       actionDelete.style.color = '#E85354';
     }
 
+    msgMenu.style.visibility = 'hidden';
+    msgMenu.style.left = '0px';
+    msgMenu.style.top = '0px';
     msgMenu.classList.add('is-open');
+
+    const rect = msgMenu.getBoundingClientRect();
+    const w = rect.width || 194;
+    const h = rect.height || 170;
+
+    let left = clientX;
+    let top = clientY + margin;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (left + w + margin > vw) left = vw - w - margin;
+    if (left < margin) left = margin;
+
+    if (top + h + margin > vh) top = clientY - h - margin;
+    if (top < margin) top = margin;
+
+    msgMenu.style.left = left + 'px';
+    msgMenu.style.top = top + 'px';
+    msgMenu.style.visibility = '';
   };
 
   document.addEventListener('contextmenu', (e) => {
