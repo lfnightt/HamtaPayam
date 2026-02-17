@@ -154,6 +154,7 @@
 
   const msgMenu = document.createElement('div');
   msgMenu.className = 'msg-menu';
+  msgMenu.style.cssText = 'width:auto;min-width:auto;white-space:nowrap;';
   msgMenu.innerHTML = `
     <button class="msg-menu__item" type="button" data-action="edit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i><span>Edit</span></button>
     <button class="msg-menu__item" type="button" data-action="copy"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>
@@ -208,10 +209,16 @@
       actionDelete.style.color = '#E85354';
     }
 
+    // Force reflow to get accurate measurements after hiding items
+    void msgMenu.offsetHeight;
+
     msgMenu.style.visibility = 'hidden';
     msgMenu.style.left = '0px';
     msgMenu.style.top = '0px';
     msgMenu.classList.add('is-open');
+
+    // Another reflow after adding class
+    void msgMenu.offsetHeight;
 
     const rect = msgMenu.getBoundingClientRect();
     const w = rect.width || 194;
