@@ -387,6 +387,36 @@
   const messageMap = new Map();
   let lastCursor = 0;
 
+  const removeLocalMessage = (id) => {
+    if (!id) return;
+
+    const chat = chats.public;
+    if (Array.isArray(chat.messages) && chat.messages.length) {
+      chat.messages = chat.messages.filter((m) => m && m.id !== id);
+    }
+
+    messageMap.delete(id);
+    seenIds.delete(id);
+
+    const el = messageElements.get(id);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+    messageElements.delete(id);
+
+    saveLocalMessages();
+  };
+
+  const deleteMessage = (id) => {
+    if (!id) return;
+    removeLocalMessage(id);
+
+    if (!WORKER_BASE_URL) return;
+    fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/delete?room=${encodeURIComponent(ROOM_ID)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, uid: selfUid }),
+    }).catch(() => {});
+  };
+
   const applyLocalEdit = (id, nextText) => {
     if (!id) return false;
     const text = String(nextText ?? '');
@@ -429,6 +459,13 @@
   const ingestMessage = (m, isEdit = false, isDelete = false) => {
     if (!m || typeof m !== 'object') return;
     if (typeof m.id !== 'string' || !m.id) return;
+
+    if (m.deleted || isDelete) {
+      removeLocalMessage(m.id);
+      const cursor = Math.max(Number(m.ts || 0), Number(m.deleteTs || 0));
+      if (cursor > lastCursor) lastCursor = cursor;
+      return;
+    }
     
     const existing = messageMap.get(m.id);
     
