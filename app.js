@@ -292,6 +292,7 @@
           uid: typeof m.uid === 'string' ? m.uid : 'anonymous',
           text: typeof m.text === 'string' ? m.text : '',
           ts: typeof m.ts === 'number' ? m.ts : Date.now(),
+          edited: m.edited || false,
         }))
         .filter((m) => m.text.trim());
       if (!cleaned.length) return;
@@ -313,7 +314,7 @@
       const chat = chats.public;
       const data = chat.messages
         .slice(-200)
-        .map((m) => ({ id: m.id, uid: m.uid, text: m.text, ts: m.ts }));
+        .map((m) => ({ id: m.id, uid: m.uid, text: m.text, ts: m.ts, edited: m.edited || false }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
       return;
