@@ -324,22 +324,47 @@
   const messageMap = new Map();
   let lastSeenTs = 0;
 
+  const applyLocalEdit = (id, nextText) => {
+    if (!id) return;
+    const text = String(nextText ?? '');
+
+    const chat = chats.public;
+    const idx = Array.isArray(chat.messages) ? chat.messages.findIndex((mm) => mm && mm.id === id) : -1;
+    const fromList = idx > -1 ? chat.messages[idx] : null;
+    const base = messageMap.get(id) || fromList;
+
+    if (base) {
+      base.text = text;
+      base.edited = true;
+      if (fromList) {
+        fromList.text = text;
+        fromList.edited = true;
+      }
+      messageMap.set(id, base);
+    }
+
+    const el = messageElements.get(id);
+    if (el) {
+      const bubble = el.querySelector('.message__bubble');
+      const meta = el.querySelector('.message__meta');
+      if (bubble) bubble.textContent = text;
+      if (meta) {
+        const timeText = base && typeof base.time === 'string' ? base.time : formatTime(new Date((base && base.ts) || Date.now()));
+        meta.textContent = timeText + ' (ویرایش شده)';
+      }
+    }
+
+    saveLocalMessages();
+  };
+
   const ingestMessage = (m, isEdit = false, isDelete = false) => {
     if (!m || typeof m !== 'object') return;
     if (typeof m.id !== 'string' || !m.id) return;
     
     const existing = messageMap.get(m.id);
     
-    if (isEdit && existing) {
-      existing.text = m.text;
-      existing.edited = true;
-      const el = messageElements.get(m.id);
-      if (el) {
-        el.querySelector('.message__bubble').textContent = m.text;
-        const metaText = existing.time ? (existing.time + ' (ویرایش شده)') : (formatTime(new Date(existing.ts || m.ts || Date.now())) + ' (ویرایش شده)');
-        el.querySelector('.message__meta').textContent = metaText;
-      }
-      saveLocalMessages();
+    if (isEdit) {
+      applyLocalEdit(m.id, m.text);
       return;
     }
 
@@ -817,6 +842,7 @@
   for (const m of chats.public.messages) {
     if (m && typeof m.id === 'string') seenIds.add(m.id);
     if (m && typeof m.ts === 'number' && m.ts > lastSeenTs) lastSeenTs = m.ts;
+    if (m && typeof m.id === 'string') messageMap.set(m.id, m);
   }
 
   connectStream();
