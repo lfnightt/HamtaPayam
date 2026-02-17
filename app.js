@@ -200,7 +200,7 @@
     const tsRaw = msgMenuTargetWrap?.getAttribute('data-ts') || '0';
     const ts = Number(tsRaw) || 0;
     const text = bubble.textContent || '';
-    const canMutate = uid === selfUid && ts > 0 && (Date.now() - ts) < (5 * 60 * 1000) && text !== '[deleted]';
+    const canMutate = uid === selfUid && text !== '[deleted]';
 
     if (actionEdit instanceof HTMLButtonElement) actionEdit.style.display = canMutate ? '' : 'none';
     if (actionDelete instanceof HTMLButtonElement) {
@@ -283,7 +283,7 @@
     }
 
     if (action === 'edit') {
-      if (!id || uid !== selfUid || !ts || (Date.now() - ts) > (5 * 60 * 1000) || text === '[deleted]') {
+      if (!id || uid !== selfUid || text === '[deleted]') {
         closeMsgMenu();
         return;
       }
@@ -293,7 +293,7 @@
     }
 
     if (action === 'delete') {
-      if (!id || uid !== selfUid || !ts || (Date.now() - ts) > (5 * 60 * 1000) || text === '[deleted]') {
+      if (!id || uid !== selfUid || text === '[deleted]') {
         closeMsgMenu();
         return;
       }
