@@ -323,7 +323,7 @@
 
   const seenIds = new Set();
   const messageMap = new Map();
-  let lastSeenTs = 0;
+  let lastCursor = 0;
 
   const applyLocalEdit = (id, nextText) => {
     if (!id) return false;
@@ -355,6 +355,10 @@
       }
 
       saveLocalMessages();
+      if (base) {
+        const c = Math.max(Number(base.ts || 0), Number(base.editTs || 0), Date.now());
+        if (c > lastCursor) lastCursor = c;
+      }
       return true;
     }
     return false;
@@ -369,10 +373,24 @@
     if (isEdit) {
       const applied = applyLocalEdit(m.id, m.text);
       if (!applied) {
-        // Message not found locally - force remove from seen and re-ingest
+        // Message not found locally - force re-render by removing from seen and creating new
         seenIds.delete(m.id);
         messageElements.delete(m.id);
-        ingestMessage({ ...m, edited: true });
+        // Directly create the message object and render it
+        const editedMsg = {
+          id: m.id,
+          uid: m.uid || 'anonymous',
+          text: m.text || '',
+          ts: typeof m.ts === 'number' ? m.ts : Date.now(),
+          edited: true,
+          dir: (m.uid || 'anonymous') === selfUid ? 'out' : 'in',
+          time: formatTime(new Date(typeof m.ts === 'number' ? m.ts : Date.now())),
+        };
+        messageMap.set(m.id, editedMsg);
+        chats.public.messages.push(editedMsg);
+        chats.public.messages = chats.public.messages.slice(-200);
+        renderSingleMessage(editedMsg);
+        saveLocalMessages();
       }
       return;
     }
@@ -399,7 +417,8 @@
     };
 
     messageMap.set(m.id, ui);
-    if (typeof ui.ts === 'number' && ui.ts > lastSeenTs) lastSeenTs = ui.ts;
+    const cursor = Math.max(Number(ui.ts || 0), Number(m.editTs || 0));
+    if (cursor > lastCursor) lastCursor = cursor;
 
     const chat = chats.public;
     chat.messages.push(ui);
@@ -415,7 +434,9 @@
     for (const m of messages) ingestMessage(m);
     const chat = chats.public;
     for (const mm of chat.messages) {
-      if (mm && typeof mm.ts === 'number' && mm.ts > lastSeenTs) lastSeenTs = mm.ts;
+      if (!mm) continue;
+      const c = Math.max(Number(mm.ts || 0), Number(mm.editTs || 0));
+      if (c > lastCursor) lastCursor = c;
     }
   };
 
@@ -643,12 +664,13 @@
     pollInFlight = true;
 
     try {
-      const url = WORKER_BASE_URL.replace(/\/$/, '') + `/history?room=${encodeURIComponent(ROOM_ID)}&since=${encodeURIComponent(String(lastSeenTs || 0))}`;
+      const url = WORKER_BASE_URL.replace(/\/$/, '') + `/history?room=${encodeURIComponent(ROOM_ID)}&since=${encodeURIComponent(String(lastCursor || 0))}`;
       const res = await fetch(url);
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
       if (!data || !Array.isArray(data.messages)) return;
       for (const m of data.messages) ingestMessage(m);
+      if (typeof data.cursor === 'number' && data.cursor > lastCursor) lastCursor = data.cursor;
     } catch {
       return;
     } finally {
@@ -695,7 +717,26 @@
       if (!evt || typeof evt.data !== 'string') return;
       try {
         const data = JSON.parse(evt.data);
-        if (data.type === 'edit' && data.message) ingestMessage(data.message, true, false);
+        if (data.type === 'edit' && data.message) {
+          const m = data.message;
+          // Try to find and update existing message
+          const existing = messageMap.get(m.id);
+          if (existing) {
+            existing.text = m.text;
+            existing.edited = true;
+            const el = messageElements.get(m.id);
+            if (el) {
+              const bubble = el.querySelector('.message__bubble');
+              const meta = el.querySelector('.message__meta');
+              if (bubble) bubble.textContent = m.text;
+              if (meta) meta.textContent = existing.time + ' (ویرایش شده)';
+            }
+            saveLocalMessages();
+          } else {
+            // Message not found, ingest as new
+            ingestMessage(m);
+          }
+        }
       } catch {}
     });
 
@@ -850,7 +891,10 @@
   loadLocalMessages();
   for (const m of chats.public.messages) {
     if (m && typeof m.id === 'string') seenIds.add(m.id);
-    if (m && typeof m.ts === 'number' && m.ts > lastSeenTs) lastSeenTs = m.ts;
+    if (m) {
+      const c = Math.max(Number(m.ts || 0), Number(m.editTs || 0));
+      if (c > lastCursor) lastCursor = c;
+    }
     if (m && typeof m.id === 'string') messageMap.set(m.id, m);
   }
 
