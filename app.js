@@ -47,22 +47,6 @@
   typingIndicator.textContent = '';
   if (messagesRoot) messagesRoot.parentNode.insertBefore(typingIndicator, messagesRoot.nextSibling);
 
-  // Reply preview
-  const replyPreview = document.createElement('div');
-  replyPreview.className = 'reply-preview';
-  replyPreview.style.cssText = 'padding:8px 16px;background:#f0f0f0;border-left:3px solid #0088cc;display:none;align-items:center;gap:8px;';
-  replyPreview.innerHTML = '<span class="reply-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666;"></span><button class="reply-cancel" style="background:none;border:none;cursor:pointer;font-size:18px;color:#999;">×</button>';
-  const composer = document.querySelector('.composer');
-  if (composer) composer.parentNode.insertBefore(replyPreview, composer);
-
-  let replyingTo = null;
-
-  replyPreview.querySelector('.reply-cancel').addEventListener('click', () => {
-    replyingTo = null;
-    replyPreview.style.display = 'none';
-    replyPreview.querySelector('.reply-text').textContent = '';
-  });
-
   const formatTime = (date) => {
     const h = String(date.getHours()).padStart(2, '0');
     const m = String(date.getMinutes()).padStart(2, '0');
@@ -112,15 +96,6 @@
     wrap.dataset.uid = m.uid;
     wrap.dataset.ts = m.ts;
 
-    // Reply indicator
-    if (m.replyTo) {
-      const replyBox = document.createElement('div');
-      replyBox.className = 'message__reply';
-      replyBox.style.cssText = 'font-size:12px;color:#0088cc;margin-bottom:4px;padding:4px 8px;background:rgba(0,136,204,0.1);border-radius:4px;';
-      replyBox.textContent = `↩ ${m.replyTo.text?.slice(0, 50) || '...'}`;
-      wrap.appendChild(replyBox);
-    }
-
     const bubble = document.createElement('div');
     bubble.className = 'message__bubble';
     bubble.textContent = m.text;
@@ -148,31 +123,11 @@
     return wrap;
   };
 
-  const startReply = (msg) => {
-    replyingTo = msg;
-    replyPreview.style.display = 'flex';
-    replyPreview.querySelector('.reply-text').textContent = msg.text.slice(0, 100);
-    composerInput?.focus();
-  };
-
   const startEdit = (id, text) => {
     if (composerInput) {
       composerInput.value = text;
       composerInput.dataset.editing = id;
       composerInput.focus();
-    }
-  };
-
-  const deleteMessage = async (id) => {
-    if (!WORKER_BASE_URL) return;
-    try {
-      await fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/delete?room=${encodeURIComponent(ROOM_ID)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, uid: selfUid }),
-      });
-    } catch (e) {
-      console.error('Delete failed:', e);
     }
   };
 
@@ -200,12 +155,10 @@
   const msgMenu = document.createElement('div');
   msgMenu.className = 'msg-menu';
   msgMenu.innerHTML = `
-    <button class="msg-menu__item" type="button" data-action="reply"><i class="fa-solid fa-reply" aria-hidden="true"></i><span>Reply</span></button>
     <button class="msg-menu__item" type="button" data-action="edit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i><span>Edit</span></button>
     <button class="msg-menu__item" type="button" data-action="copy"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>
     <button class="msg-menu__item" type="button" data-action="pin"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
     <button class="msg-menu__item" type="button" data-action="select"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>Select</span></button>
-    <button class="msg-menu__item msg-menu__item--danger" type="button" data-action="delete"><i class="fa-regular fa-trash-can" aria-hidden="true"></i><span>Delete</span></button>
   `;
   document.body.appendChild(msgMenu);
 
@@ -241,7 +194,6 @@
     msgMenuTargetWrap = bubble.closest('.message');
 
     const actionEdit = msgMenu.querySelector('[data-action="edit"]');
-    const actionDelete = msgMenu.querySelector('[data-action="delete"]');
     const uid = msgMenuTargetWrap?.getAttribute('data-uid') || '';
     const tsRaw = msgMenuTargetWrap?.getAttribute('data-ts') || '0';
     const ts = Number(tsRaw) || 0;
@@ -249,7 +201,6 @@
     const canMutate = uid === selfUid && ts > 0 && (Date.now() - ts) < (5 * 60 * 1000) && text !== '[deleted]';
 
     if (actionEdit instanceof HTMLButtonElement) actionEdit.style.display = canMutate ? '' : 'none';
-    if (actionDelete instanceof HTMLButtonElement) actionDelete.style.display = canMutate ? '' : 'none';
 
     msgMenu.classList.add('is-open');
   };
@@ -308,26 +259,6 @@
         return;
       }
       startEdit(id, text);
-      closeMsgMenu();
-      return;
-    }
-
-    if (action === 'delete') {
-      if (!id || uid !== selfUid || !ts || (Date.now() - ts) > (5 * 60 * 1000) || text === '[deleted]') {
-        closeMsgMenu();
-        return;
-      }
-      await deleteMessage(id);
-      closeMsgMenu();
-      return;
-    }
-
-    if (action === 'reply') {
-      if (!id) {
-        closeMsgMenu();
-        return;
-      }
-      startReply({ id, text });
       closeMsgMenu();
       return;
     }
@@ -405,22 +336,8 @@
       const el = messageElements.get(m.id);
       if (el) {
         el.querySelector('.message__bubble').textContent = m.text;
-        el.querySelector('.message__meta').textContent = formatTime(new Date(m.ts)) + ' (ویرایش شده)';
-      }
-      saveLocalMessages();
-      return;
-    }
-
-    if (isDelete && existing) {
-      existing.deleted = true;
-      existing.text = '[deleted]';
-      const el = messageElements.get(m.id);
-      if (el) {
-        const bubble = el.querySelector('.message__bubble');
-        bubble.textContent = '[deleted]';
-        bubble.style.fontStyle = 'italic';
-        bubble.style.color = '#999';
-        el.querySelector('.message__actions')?.remove();
+        const metaText = existing.time ? (existing.time + ' (ویرایش شده)') : (formatTime(new Date(existing.ts || m.ts || Date.now())) + ' (ویرایش شده)');
+        el.querySelector('.message__meta').textContent = metaText;
       }
       saveLocalMessages();
       return;
@@ -443,7 +360,6 @@
       ts,
       dir: uid === selfUid ? 'out' : 'in',
       time: formatTime(new Date(ts)),
-      replyTo: m.replyTo || null,
       edited: m.edited || false,
       deleted: m.deleted || false,
     };
@@ -749,14 +665,6 @@
       } catch {}
     });
 
-    es.addEventListener('delete', (evt) => {
-      if (!evt || typeof evt.data !== 'string') return;
-      try {
-        const data = JSON.parse(evt.data);
-        if (data.type === 'delete' && data.message) ingestMessage(data.message, false, true);
-      } catch {}
-    });
-
     es.addEventListener('typing', (evt) => {
       if (!evt || typeof evt.data !== 'string') return;
       try {
@@ -814,6 +722,11 @@
 
     if (editingId) {
       // Edit mode
+
+      const existing = messageMap.get(editingId);
+      const ts = existing && typeof existing.ts === 'number' ? existing.ts : Date.now();
+      ingestMessage({ id: editingId, uid: selfUid, text, ts }, true, false);
+
       fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/edit?room=${encodeURIComponent(ROOM_ID)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -828,7 +741,6 @@
         uid: selfUid,
         text,
         ts: Date.now(),
-        replyTo: replyingTo ? { id: replyingTo.id, text: replyingTo.text.slice(0, 100) } : null,
       };
 
       ingestMessage(msg);
@@ -843,9 +755,6 @@
     }
 
     composerInput.value = '';
-    replyingTo = null;
-    replyPreview.style.display = 'none';
-    replyPreview.querySelector('.reply-text').textContent = '';
     sendTyping(false);
   };
 
