@@ -107,7 +107,7 @@
     const meta = document.createElement('div');
     meta.className = 'message__meta';
     let metaText = m.time;
-    if (m.edited) metaText += ' (ویرایش شده)';
+    if (m.edited) metaText += ' (edited)';
     meta.textContent = metaText;
 
     wrap.appendChild(bubble);
@@ -156,10 +156,10 @@
   msgMenu.className = 'msg-menu';
   msgMenu.innerHTML = `
     <button class="msg-menu__item" type="button" data-action="edit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i><span>Edit</span></button>
-    <button class="msg-menu__item" type="button" data-action="delete"><i class="fa-regular fa-trash-can" aria-hidden="true"></i><span>حذف پیام</span></button>
     <button class="msg-menu__item" type="button" data-action="copy"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>
     <button class="msg-menu__item" type="button" data-action="pin"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
     <button class="msg-menu__item" type="button" data-action="select"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>Select</span></button>
+    <button class="msg-menu__item" type="button" data-action="delete"><i class="fa-regular fa-trash-can" aria-hidden="true" style="color:#E85354"></i><span style="color:#E85354">Delete message</span></button>
   `;
   document.body.appendChild(msgMenu);
 
@@ -168,11 +168,11 @@
   const deleteModal = document.createElement('div');
   deleteModal.style.cssText = 'width:312px;height:172px;background:#212121;border-radius:12px;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
   deleteModal.innerHTML = `
-    <div style="color:#fff;font-weight:700;font-size:16px;line-height:20px;">حذف پیام</div>
-    <div style="color:#cfcfcf;font-size:13px;line-height:18px;margin-top:10px;">آیا از حذف پیام مطمئنید؟</div>
+    <div style="color:#fff;font-weight:700;font-size:16px;line-height:20px;">Delete message</div>
+    <div style="color:#cfcfcf;font-size:13px;line-height:18px;margin-top:10px;">Are you sure you want to delete this message?</div>
     <div style="display:flex;gap:18px;justify-content:flex-end;align-items:center;margin-top:auto;">
-      <button type="button" data-action="cancel" style="background:transparent;border:0;padding:6px 0;color:#8774E1;font-weight:700;font-size:14px;cursor:pointer;">کنسل</button>
-      <button type="button" data-action="confirm" style="background:transparent;border:0;padding:6px 0;color:#E85354;font-weight:700;font-size:14px;cursor:pointer;">حذف</button>
+      <button type="button" data-action="cancel" style="background:transparent;border:0;padding:6px 0;color:#8774E1;font-weight:700;font-size:14px;cursor:pointer;">Cancel</button>
+      <button type="button" data-action="confirm" style="background:transparent;border:0;padding:6px 0;color:#E85354;font-weight:700;font-size:14px;cursor:pointer;">Delete</button>
     </div>
   `;
   deleteModalOverlay.appendChild(deleteModal);
@@ -442,7 +442,7 @@
         if (bubble) bubble.textContent = text;
         if (meta) {
           const timeText = base && typeof base.time === 'string' ? base.time : formatTime(new Date((base && base.ts) || Date.now()));
-          meta.textContent = timeText + ' (ویرایش شده)';
+          meta.textContent = timeText + ' (edited)';
         }
       }
 
@@ -828,7 +828,7 @@
               const bubble = el.querySelector('.message__bubble');
               const meta = el.querySelector('.message__meta');
               if (bubble) bubble.textContent = m.text;
-              if (meta) meta.textContent = existing.time + ' (ویرایش شده)';
+              if (meta) meta.textContent = existing.time + ' (edited)';
             }
             saveLocalMessages();
           } else {
@@ -857,8 +857,8 @@
           const others = data.users.filter(u => u !== selfUid);
           if (others.length > 0) {
             typingIndicator.textContent = others.length === 1 
-              ? 'یک نفر در حال نوشتن...' 
-              : `${others.length} نفر در حال نوشتن...`;
+              ? 'Someone is typing...' 
+              : `${others.length} people are typing...`;
             typingIndicator.style.display = 'block';
           } else {
             typingIndicator.style.display = 'none';
@@ -872,7 +872,7 @@
       try {
         const data = JSON.parse(evt.data);
         if (data.type === 'presence') {
-          onlineCountBadge.textContent = `${data.count} آنلاین`;
+          onlineCountBadge.textContent = `${data.count} online`;
         }
       } catch {}
     });
