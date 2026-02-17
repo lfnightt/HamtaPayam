@@ -138,43 +138,6 @@
     wrap.appendChild(bubble);
     wrap.appendChild(meta);
 
-    // Action buttons for own messages
-    if (m.uid === selfUid && !m.deleted) {
-      const actions = document.createElement('div');
-      actions.className = 'message__actions';
-      actions.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
-      
-      const canEdit = Date.now() - m.ts < 5 * 60 * 1000;
-      
-      if (canEdit) {
-        const editBtn = document.createElement('button');
-        editBtn.textContent = '✏️ ویرایش';
-        editBtn.style.cssText = 'font-size:11px;padding:2px 8px;border:none;background:#e3f2fd;border-radius:4px;cursor:pointer;';
-        editBtn.onclick = () => startEdit(m.id, m.text);
-        actions.appendChild(editBtn);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = '🗑️ حذف';
-        deleteBtn.style.cssText = 'font-size:11px;padding:2px 8px;border:none;background:#ffebee;border-radius:4px;cursor:pointer;color:#c62828;';
-        deleteBtn.onclick = () => deleteMessage(m.id);
-        actions.appendChild(deleteBtn);
-      }
-
-      wrap.appendChild(actions);
-    }
-
-    // Reply button for all messages
-    const replyBtn = document.createElement('button');
-    replyBtn.textContent = '↩️';
-    replyBtn.title = 'پاسخ';
-    replyBtn.style.cssText = 'position:absolute;left:-28px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;opacity:0;transition:opacity 0.2s;';
-    wrap.style.position = 'relative';
-    wrap.appendChild(replyBtn);
-    
-    wrap.addEventListener('mouseenter', () => replyBtn.style.opacity = '1');
-    wrap.addEventListener('mouseleave', () => replyBtn.style.opacity = '0');
-    replyBtn.addEventListener('click', () => startReply(m));
-
     if (prepend) {
       messagesRoot.insertBefore(wrap, messagesRoot.firstChild);
     } else {
@@ -238,6 +201,7 @@
   msgMenu.className = 'msg-menu';
   msgMenu.innerHTML = `
     <button class="msg-menu__item" type="button" data-action="reply"><i class="fa-solid fa-reply" aria-hidden="true"></i><span>Reply</span></button>
+    <button class="msg-menu__item" type="button" data-action="edit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i><span>Edit</span></button>
     <button class="msg-menu__item" type="button" data-action="copy"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>
     <button class="msg-menu__item" type="button" data-action="pin"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
     <button class="msg-menu__item" type="button" data-action="select"><i class="fa-regular fa-circle-check" aria-hidden="true"></i><span>Select</span></button>
@@ -246,10 +210,12 @@
   document.body.appendChild(msgMenu);
 
   let msgMenuTarget = null;
+  let msgMenuTargetWrap = null;
 
   const closeMsgMenu = () => {
     msgMenu.classList.remove('is-open');
     msgMenuTarget = null;
+    msgMenuTargetWrap = null;
   };
 
   const openMsgMenuUnderCursor = (bubble, clientX, clientY) => {
@@ -272,6 +238,19 @@
     msgMenu.style.left = left + 'px';
     msgMenu.style.top = top + 'px';
     msgMenuTarget = bubble;
+    msgMenuTargetWrap = bubble.closest('.message');
+
+    const actionEdit = msgMenu.querySelector('[data-action="edit"]');
+    const actionDelete = msgMenu.querySelector('[data-action="delete"]');
+    const uid = msgMenuTargetWrap?.getAttribute('data-uid') || '';
+    const tsRaw = msgMenuTargetWrap?.getAttribute('data-ts') || '0';
+    const ts = Number(tsRaw) || 0;
+    const text = bubble.textContent || '';
+    const canMutate = uid === selfUid && ts > 0 && (Date.now() - ts) < (5 * 60 * 1000) && text !== '[deleted]';
+
+    if (actionEdit instanceof HTMLButtonElement) actionEdit.style.display = canMutate ? '' : 'none';
+    if (actionDelete instanceof HTMLButtonElement) actionDelete.style.display = canMutate ? '' : 'none';
+
     msgMenu.classList.add('is-open');
   };
 
@@ -297,9 +276,14 @@
     const btn = e.target instanceof Element ? e.target.closest('[data-action]') : null;
     if (!(btn instanceof HTMLButtonElement)) return;
     if (!(msgMenuTarget instanceof HTMLElement)) return;
+    if (!(msgMenuTargetWrap instanceof HTMLElement)) return;
 
     const action = btn.getAttribute('data-action');
     const text = msgMenuTarget.textContent || '';
+    const id = msgMenuTargetWrap.getAttribute('data-id') || '';
+    const uid = msgMenuTargetWrap.getAttribute('data-uid') || '';
+    const tsRaw = msgMenuTargetWrap.getAttribute('data-ts') || '0';
+    const ts = Number(tsRaw) || 0;
 
     if (action === 'copy') {
       try {
@@ -318,18 +302,32 @@
       return;
     }
 
+    if (action === 'edit') {
+      if (!id || uid !== selfUid || !ts || (Date.now() - ts) > (5 * 60 * 1000) || text === '[deleted]') {
+        closeMsgMenu();
+        return;
+      }
+      startEdit(id, text);
+      closeMsgMenu();
+      return;
+    }
+
     if (action === 'delete') {
-      const wrap = msgMenuTarget.closest('.message');
-      wrap?.remove();
+      if (!id || uid !== selfUid || !ts || (Date.now() - ts) > (5 * 60 * 1000) || text === '[deleted]') {
+        closeMsgMenu();
+        return;
+      }
+      await deleteMessage(id);
       closeMsgMenu();
       return;
     }
 
     if (action === 'reply') {
-      if (composerInput) {
-        composerInput.value = (composerInput.value ? composerInput.value + ' ' : '') + text;
-        composerInput.focus();
+      if (!id) {
+        closeMsgMenu();
+        return;
       }
+      startReply({ id, text });
       closeMsgMenu();
       return;
     }
