@@ -839,6 +839,16 @@
       } catch {}
     });
 
+    es.addEventListener('delete', (evt) => {
+      if (!evt || typeof evt.data !== 'string') return;
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === 'delete' && data.message) {
+          ingestMessage(data.message, false, true);
+        }
+      } catch {}
+    });
+
     es.addEventListener('typing', (evt) => {
       if (!evt || typeof evt.data !== 'string') return;
       try {
