@@ -3,6 +3,179 @@
   const ROOM_ID = 'public';
   const STORAGE_KEY = 'hamtapayam_public_messages_v1';
   const UID_KEY = 'hamtapayam_uid_v1';
+  const AUTH_KEY = 'hamtapayam_auth_v1';
+
+  // Authentication handling
+  const authPage = document.getElementById('auth-page');
+  const authForm = document.getElementById('auth-form');
+  const authEmail = document.getElementById('auth-email');
+  const authPassword = document.getElementById('auth-password');
+  const authToggle = document.getElementById('auth-toggle');
+  const authTitle = document.querySelector('.auth-title');
+  const authBtn = document.querySelector('.auth-btn');
+  const authHint = document.querySelector('.auth-hint');
+
+  let isSignUp = false;
+
+  const getStoredAuth = () => {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredAuth = (email, password) => {
+    try {
+      localStorage.setItem(AUTH_KEY, JSON.stringify({ email, password, timestamp: Date.now() }));
+    } catch {}
+  };
+
+  const showMainApp = () => {
+    if (authPage) {
+      authPage.classList.add('is-hidden');
+    }
+  };
+
+  const showAuthPage = () => {
+    if (authPage) {
+      authPage.classList.remove('is-hidden');
+    }
+  };
+
+  const checkAuth = async () => {
+    const stored = getStoredAuth();
+    if (!stored || !stored.email || !stored.password) {
+      showAuthPage();
+      return false;
+    }
+
+    // First try to verify with backend
+    try {
+      const res = await fetch(WORKER_BASE_URL.replace(/\/$/, '') + '/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: stored.email, password: stored.password }),
+      });
+      
+      if (res.ok) {
+        showMainApp();
+        return true;
+      }
+      // If server returns 401/404, it means user not found on server
+      // But we still have local credentials - try to register them
+      if (res.status === 401 || res.status === 404) {
+        // Try to register user on server
+        try {
+          const registerRes = await fetch(WORKER_BASE_URL.replace(/\/$/, '') + '/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: stored.email, password: stored.password }),
+          });
+          if (registerRes.ok || registerRes.status === 409) {
+            // User now exists on server (or already existed), show main app
+            showMainApp();
+            return true;
+          }
+        } catch {
+          // Server not available, use local credentials
+        }
+      }
+    } catch {
+      // Server not available - will use local fallback below
+    }
+    
+    // Local fallback: if we have stored credentials, allow access
+    showMainApp();
+    return true;
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    const email = authEmail?.value?.trim();
+    const password = authPassword?.value;
+
+    if (!email || !password) return;
+
+    const endpoint = isSignUp ? '/auth/register' : '/auth/login';
+    
+    try {
+      const res = await fetch(WORKER_BASE_URL.replace(/\/$/, '') + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (res.ok) {
+        setStoredAuth(email, password);
+        showMainApp();
+      } else if (res.status === 401) {
+        // Server doesn't have this user - try to register first
+        try {
+          const registerRes = await fetch(WORKER_BASE_URL.replace(/\/$/, '') + '/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (registerRes.ok || registerRes.status === 409) {
+            // Now try login again or just use local
+            setStoredAuth(email, password);
+            showMainApp();
+          } else {
+            // Server error - use local fallback
+            setStoredAuth(email, password);
+            showMainApp();
+          }
+        } catch {
+          // Server not available - use local
+          setStoredAuth(email, password);
+          showMainApp();
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || (isSignUp ? 'Registration failed' : 'Login failed'));
+      }
+    } catch (err) {
+      // If backend is not available, store locally for demo purposes
+      if (isSignUp) {
+        // Register locally
+        setStoredAuth(email, password);
+        showMainApp();
+      } else {
+        // Try to verify against stored auth
+        const stored = getStoredAuth();
+        if (stored && stored.email === email && stored.password === password) {
+          showMainApp();
+        } else {
+          alert('Invalid credentials or server unavailable');
+        }
+      }
+    }
+  };
+
+  const toggleAuthMode = (e) => {
+    e.preventDefault();
+    isSignUp = !isSignUp;
+    
+    if (authTitle) authTitle.textContent = isSignUp ? 'Sign up for HamtaPayam' : 'Sign in to HamtaPayam';
+    if (authBtn) authBtn.textContent = isSignUp ? 'SIGN UP' : 'SIGN IN';
+    if (authHint) {
+      authHint.innerHTML = isSignUp 
+        ? 'Already have an account? <a href="#" id="auth-toggle" class="auth-link">Sign in</a>'
+        : 'Don\'t have an account? <a href="#" id="auth-toggle" class="auth-link">Sign up</a>';
+    }
+    // Re-attach event listener to new link
+    const newToggle = document.getElementById('auth-toggle');
+    if (newToggle) newToggle.addEventListener('click', toggleAuthMode);
+  };
+
+  if (authForm) authForm.addEventListener('submit', handleAuthSubmit);
+  if (authToggle) authToggle.addEventListener('click', toggleAuthMode);
+
+  // Check auth on load
+  checkAuth();
 
   const getOrCreateUid = () => {
     try {
@@ -98,7 +271,126 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'message__bubble';
-    bubble.textContent = m.text;
+    if (m && typeof m === 'object' && m.attachment && typeof m.attachment === 'object') {
+      const attachment = m.attachment;
+      const kind = typeof attachment.kind === 'string' ? attachment.kind : '';
+      const previewUrl = typeof attachment.previewUrl === 'string' ? attachment.previewUrl : '';
+      const name = typeof attachment.name === 'string' ? attachment.name : '';
+      const sizeText = typeof attachment.sizeText === 'string' ? attachment.sizeText : '';
+
+      const container = document.createElement('div');
+      container.className = 'message__attachment';
+
+      if (kind === 'image' && previewUrl) {
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.display = 'inline-block';
+
+        const img = document.createElement('img');
+        img.className = 'message__attachment-media';
+        img.alt = name;
+        img.src = previewUrl;
+        wrapper.appendChild(img);
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'message__attachment-download';
+        downloadBtn.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i>';
+        downloadBtn.setAttribute('aria-label', 'Download');
+        downloadBtn.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+        downloadBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const a = document.createElement('a');
+          a.href = previewUrl;
+          a.download = name || 'download';
+          a.click();
+        });
+        wrapper.appendChild(downloadBtn);
+        container.appendChild(wrapper);
+      } else if (kind === 'video' && previewUrl) {
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.display = 'inline-block';
+
+        const video = document.createElement('video');
+        video.className = 'message__attachment-media';
+        video.src = previewUrl;
+        video.controls = false;
+        video.autoplay = false;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        wrapper.appendChild(video);
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'message__attachment-download';
+        downloadBtn.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i>';
+        downloadBtn.setAttribute('aria-label', 'Download');
+        downloadBtn.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);border:none;border-radius:50%;width:32px;height:32px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+        downloadBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const a = document.createElement('a');
+          a.href = previewUrl;
+          a.download = name || 'download';
+          a.click();
+        });
+        wrapper.appendChild(downloadBtn);
+        container.appendChild(wrapper);
+      } else {
+        const card = document.createElement('div');
+        card.className = 'message__attachment-file';
+
+        const icon = document.createElement('div');
+        icon.className = 'message__attachment-file-icon';
+        const i = document.createElement('i');
+        i.className = kind === 'music' ? 'fa-solid fa-music' : 'fa-regular fa-file';
+        i.setAttribute('aria-hidden', 'true');
+        icon.appendChild(i);
+
+        const meta = document.createElement('div');
+        meta.className = 'message__attachment-file-meta';
+
+        const title = document.createElement('div');
+        title.className = 'message__attachment-file-name';
+        title.textContent = name;
+
+        const sub = document.createElement('div');
+        sub.className = 'message__attachment-file-size';
+        sub.textContent = sizeText;
+
+        meta.appendChild(title);
+        meta.appendChild(sub);
+
+        card.appendChild(icon);
+        card.appendChild(meta);
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'message__attachment-file-download';
+        downloadBtn.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i>';
+        downloadBtn.setAttribute('aria-label', 'Download');
+        downloadBtn.style.cssText = 'background:transparent;border:none;color:#8774E1;cursor:pointer;padding:8px;margin-left:8px;';
+        downloadBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const a = document.createElement('a');
+          a.href = previewUrl || '#';
+          a.download = name || 'download';
+          a.click();
+        });
+        card.appendChild(downloadBtn);
+
+        container.appendChild(card);
+      }
+
+      if (typeof m.text === 'string' && m.text.trim()) {
+        const caption = document.createElement('div');
+        caption.className = 'message__attachment-caption';
+        caption.textContent = m.text;
+        container.appendChild(caption);
+      }
+
+      bubble.appendChild(container);
+    } else {
+      bubble.textContent = m.text;
+    }
     if (m.deleted) {
       bubble.style.fontStyle = 'italic';
       bubble.style.color = '#999';
@@ -361,8 +653,9 @@
           text: typeof m.text === 'string' ? m.text : '',
           ts: typeof m.ts === 'number' ? m.ts : Date.now(),
           edited: m.edited || false,
+          attachment: m.attachment || undefined,
         }))
-        .filter((m) => m.text.trim());
+        .filter((m) => m.text.trim() || (m.attachment && typeof m.attachment === 'object'));
       if (!cleaned.length) return;
 
       const chat = chats.public;
@@ -382,7 +675,14 @@
       const chat = chats.public;
       const data = chat.messages
         .slice(-200)
-        .map((m) => ({ id: m.id, uid: m.uid, text: m.text, ts: m.ts, edited: m.edited || false }));
+        .map((m) => ({
+          id: m.id,
+          uid: m.uid,
+          text: m.text,
+          ts: m.ts,
+          edited: m.edited || false,
+          attachment: m.attachment || undefined,
+        }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
       return;
@@ -503,7 +803,8 @@
     if (seenIds.has(m.id)) return;
     
     const text = typeof m.text === 'string' ? m.text : '';
-    if (!text.trim() && !m.deleted) return;
+    const hasAttachment = Boolean(m && typeof m === 'object' && m.attachment && typeof m.attachment === 'object');
+    if (!text.trim() && !m.deleted && !hasAttachment) return;
     
     const ts = typeof m.ts === 'number' ? m.ts : Date.now();
     const uid = typeof m.uid === 'string' ? m.uid : 'anonymous';
@@ -520,6 +821,10 @@
       edited: m.edited || false,
       deleted: m.deleted || false,
     };
+
+    if (hasAttachment) {
+      ui.attachment = m.attachment;
+    }
 
     messageMap.set(m.id, ui);
     const cursor = Math.max(Number(ui.ts || 0), Number(m.editTs || 0));
@@ -735,6 +1040,350 @@
   const emojiPicker = document.querySelector('emoji-picker');
   const composerInput = document.querySelector('.composer__input');
   const sendBtn = document.querySelector('.composer__mic');
+  const attachBtn = document.querySelector('.composer__bar [aria-label="Attach"]');
+
+  const attachMenu = document.createElement('div');
+  attachMenu.className = 'attach-menu';
+  attachMenu.setAttribute('role', 'menu');
+  attachMenu.innerHTML = `
+    <button class="attach-menu__item" type="button" data-kind="image"><i class="fa-regular fa-image" aria-hidden="true"></i><span>Image</span></button>
+    <button class="attach-menu__item" type="button" data-kind="video"><i class="fa-solid fa-video" aria-hidden="true"></i><span>Video</span></button>
+    <button class="attach-menu__item" type="button" data-kind="music"><i class="fa-solid fa-music" aria-hidden="true"></i><span>Music</span></button>
+    <button class="attach-menu__item" type="button" data-kind="file"><i class="fa-regular fa-file" aria-hidden="true"></i><span>File</span></button>
+  `;
+  document.body.appendChild(attachMenu);
+
+  const attachModalOverlay = document.createElement('div');
+  attachModalOverlay.className = 'attach-modal-overlay';
+  attachModalOverlay.setAttribute('role', 'dialog');
+  attachModalOverlay.setAttribute('aria-hidden', 'true');
+  attachModalOverlay.innerHTML = `
+    <div class="attach-modal" role="document">
+      <div class="attach-modal__header">
+        <div class="attach-modal__title">1 file selected</div>
+        <button class="attach-modal__close" type="button" aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <div class="attach-modal__body"></div>
+      <div class="attach-modal__footer">
+        <div class="attach-caption">
+          <button class="attach-caption__emoji" type="button" aria-label="Emoji" aria-haspopup="dialog" aria-expanded="false">
+            <i class="fa-regular fa-face-smile" aria-hidden="true"></i>
+          </button>
+          <div class="attach-emoji-menu" role="dialog" aria-label="Emoji picker">
+            <emoji-picker class="emoji-picker"></emoji-picker>
+          </div>
+          <input class="attach-caption__input" type="text" placeholder="Message" aria-label="Message" />
+        </div>
+        <button class="attach-modal__send" type="button"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i><span>Send</span></button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(attachModalOverlay);
+
+  const attachInputs = {
+    image: (() => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      return input;
+    })(),
+    video: (() => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      return input;
+    })(),
+    music: (() => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'audio/*';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      return input;
+    })(),
+    file: (() => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      return input;
+    })(),
+  };
+
+  let attachMenuOpen = false;
+  let pendingAttach = null;
+  let pendingAttachUrl = '';
+
+  const formatBytes = (bytes) => {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    const kb = n / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  };
+
+  const fileToBase64 = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const closeAttachMenu = () => {
+    attachMenu.classList.remove('is-open');
+    attachMenuOpen = false;
+    if (attachBtn instanceof HTMLElement) attachBtn.setAttribute('aria-expanded', 'false');
+  };
+
+  const openAttachMenuAtButton = () => {
+    if (!(attachBtn instanceof HTMLElement)) return;
+
+    attachMenu.style.visibility = 'hidden';
+    attachMenu.style.left = '0px';
+    attachMenu.style.top = '0px';
+    attachMenu.classList.add('is-open');
+    attachMenuOpen = true;
+    attachBtn.setAttribute('aria-expanded', 'true');
+
+    const rect = attachBtn.getBoundingClientRect();
+    const menuRect = attachMenu.getBoundingClientRect();
+    const w = menuRect.width || 162;
+    const h = menuRect.height || 240;
+
+    const margin = 10;
+    let left = rect.left + rect.width / 2 - w / 2;
+    let top = rect.top - h - margin;
+
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - h - margin));
+
+    attachMenu.style.left = `${left}px`;
+    attachMenu.style.top = `${top}px`;
+    attachMenu.style.visibility = 'visible';
+  };
+
+  const attachEmojiBtn = attachModalOverlay.querySelector('.attach-caption__emoji');
+  const attachEmojiMenu = attachModalOverlay.querySelector('.attach-emoji-menu');
+  const attachEmojiPicker = attachModalOverlay.querySelector('.attach-emoji-menu emoji-picker');
+  const attachCaptionInput = attachModalOverlay.querySelector('.attach-caption__input');
+
+  const setAttachEmojiOpen = (open) => {
+    if (!(attachEmojiBtn instanceof HTMLElement) || !(attachEmojiMenu instanceof HTMLElement)) return;
+    attachEmojiMenu.classList.toggle('is-open', open);
+    attachEmojiBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  if (attachEmojiBtn instanceof HTMLButtonElement) {
+    attachEmojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = attachEmojiMenu instanceof HTMLElement ? !attachEmojiMenu.classList.contains('is-open') : true;
+      setAttachEmojiOpen(open);
+    });
+  }
+
+  if (attachEmojiPicker && attachCaptionInput instanceof HTMLInputElement) {
+    attachEmojiPicker.addEventListener('emoji-click', (e) => {
+      const detail = e && typeof e === 'object' ? e.detail : null;
+      const emoji = detail && typeof detail.unicode === 'string' ? detail.unicode : '';
+      if (!emoji) return;
+      attachCaptionInput.value = `${attachCaptionInput.value || ''}${emoji}`;
+      attachCaptionInput.focus();
+    });
+  }
+
+  const closeAttachModal = () => {
+    attachModalOverlay.classList.remove('is-open');
+    attachModalOverlay.setAttribute('aria-hidden', 'true');
+    pendingAttach = null;
+    if (pendingAttachUrl) URL.revokeObjectURL(pendingAttachUrl);
+    pendingAttachUrl = '';
+    const body = attachModalOverlay.querySelector('.attach-modal__body');
+    if (body) body.innerHTML = '';
+    if (attachCaptionInput instanceof HTMLInputElement) attachCaptionInput.value = '';
+    setAttachEmojiOpen(false);
+  };
+
+  const openAttachModal = (kind, file) => {
+    pendingAttach = { kind, file };
+    const body = attachModalOverlay.querySelector('.attach-modal__body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    if (pendingAttachUrl) URL.revokeObjectURL(pendingAttachUrl);
+    pendingAttachUrl = '';
+
+    if (kind === 'image' || kind === 'video') {
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'grid';
+      wrapper.style.gap = '10px';
+      wrapper.style.justifyItems = 'center';
+
+      const preview = document.createElement('div');
+      preview.className = 'attach-preview';
+      pendingAttachUrl = URL.createObjectURL(file);
+
+      if (kind === 'image') {
+        const img = document.createElement('img');
+        img.alt = file.name;
+        img.src = pendingAttachUrl;
+        preview.appendChild(img);
+      } else {
+        const video = document.createElement('video');
+        video.src = pendingAttachUrl;
+        video.controls = false;
+        video.autoplay = false;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        preview.appendChild(video);
+      }
+
+      const info = document.createElement('div');
+      info.style.textAlign = 'center';
+      info.style.fontSize = '13px';
+      info.style.color = 'rgba(255,255,255,0.7)';
+      info.textContent = `${file.name} • ${formatBytes(file.size)}`;
+
+      wrapper.appendChild(preview);
+      wrapper.appendChild(info);
+      body.appendChild(wrapper);
+    } else {
+      const meta = document.createElement('div');
+      meta.className = 'attach-file-meta';
+      const icon = document.createElement('div');
+      icon.className = 'attach-file-meta__icon';
+      const i = document.createElement('i');
+      i.className = kind === 'music' ? 'fa-solid fa-music' : 'fa-regular fa-file';
+      i.setAttribute('aria-hidden', 'true');
+      icon.appendChild(i);
+
+      const name = document.createElement('div');
+      name.className = 'attach-file-meta__name';
+      name.textContent = file.name;
+
+      const size = document.createElement('div');
+      size.className = 'attach-file-meta__size';
+      size.textContent = formatBytes(file.size);
+
+      meta.appendChild(icon);
+      meta.appendChild(name);
+      meta.appendChild(size);
+      body.appendChild(meta);
+    }
+
+    attachModalOverlay.classList.add('is-open');
+    attachModalOverlay.setAttribute('aria-hidden', 'false');
+    setAttachEmojiOpen(false);
+    if (attachCaptionInput instanceof HTMLInputElement) {
+      attachCaptionInput.value = '';
+      attachCaptionInput.focus();
+    }
+  };
+
+  const handlePickedFile = (kind) => {
+    const input = attachInputs[kind];
+    if (!(input instanceof HTMLInputElement)) return;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    openAttachModal(kind, file);
+  };
+
+  if (attachInputs.image) attachInputs.image.addEventListener('change', () => handlePickedFile('image'));
+  if (attachInputs.video) attachInputs.video.addEventListener('change', () => handlePickedFile('video'));
+  if (attachInputs.music) attachInputs.music.addEventListener('change', () => handlePickedFile('music'));
+  if (attachInputs.file) attachInputs.file.addEventListener('change', () => handlePickedFile('file'));
+
+  if (attachBtn instanceof HTMLButtonElement) {
+    attachBtn.setAttribute('aria-haspopup', 'menu');
+    attachBtn.setAttribute('aria-expanded', 'false');
+    attachBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (attachMenuOpen) {
+        closeAttachMenu();
+        return;
+      }
+      openAttachMenuAtButton();
+    });
+  }
+
+  attachMenu.addEventListener('click', (e) => {
+    const btn = e.target instanceof Element ? e.target.closest('.attach-menu__item[data-kind]') : null;
+    if (!(btn instanceof HTMLButtonElement)) return;
+    const kind = btn.getAttribute('data-kind');
+    if (!kind || !(kind in attachInputs)) return;
+    closeAttachMenu();
+    const input = attachInputs[kind];
+    if (input instanceof HTMLInputElement) input.click();
+  });
+
+  const attachModalCloseBtn = attachModalOverlay.querySelector('.attach-modal__close');
+  if (attachModalCloseBtn instanceof HTMLButtonElement) {
+    attachModalCloseBtn.addEventListener('click', () => closeAttachModal());
+  }
+
+  attachModalOverlay.addEventListener('click', (e) => {
+    if (!(e.target instanceof Element)) return;
+    const inside = e.target.closest('.attach-modal');
+    if (!inside) {
+      closeAttachModal();
+      return;
+    }
+
+    const insideEmoji = e.target.closest('.attach-emoji-menu') || e.target.closest('.attach-caption__emoji');
+    if (!insideEmoji) setAttachEmojiOpen(false);
+  });
+
+  const attachModalSendBtn = attachModalOverlay.querySelector('.attach-modal__send');
+  if (attachModalSendBtn instanceof HTMLButtonElement) {
+    attachModalSendBtn.addEventListener('click', async () => {
+      if (!pendingAttach) return;
+
+      const { kind, file } = pendingAttach;
+      const sizeText = formatBytes(file.size);
+      const caption = attachCaptionInput instanceof HTMLInputElement ? attachCaptionInput.value.trim() : '';
+
+      let previewUrl = '';
+      if (kind === 'image' || kind === 'video') {
+        previewUrl = await fileToBase64(file);
+      }
+
+      const msg = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        uid: selfUid,
+        text: caption,
+        ts: Date.now(),
+        attachment: {
+          kind,
+          name: file.name,
+          sizeText,
+          previewUrl,
+        }
+      };
+
+      ingestMessage(msg);
+
+      if (WORKER_BASE_URL) {
+        const networkText = caption || `${file.name} (${sizeText})`;
+        fetch(WORKER_BASE_URL.replace(/\/$/, '') + `/send?room=${encodeURIComponent(ROOM_ID)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: msg.id, uid: msg.uid, text: networkText, ts: msg.ts }),
+        }).catch(() => {});
+      }
+
+      closeAttachModal();
+    });
+  }
 
   // Mobile Navigation Setup
   const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
@@ -864,6 +1513,15 @@
   }, { passive: true });
 
   if (sendBtn) sendBtn.setAttribute('aria-label', 'Send');
+
+  document.addEventListener('click', (e) => {
+    if (!(e.target instanceof Element)) return;
+    const inside = e.target.closest('.attach-menu') || e.target.closest('.composer__bar [aria-label="Attach"]');
+    if (!inside) closeAttachMenu();
+  });
+
+  window.addEventListener('scroll', closeAttachMenu, { passive: true });
+  window.addEventListener('resize', closeAttachMenu, { passive: true });
 
   // Typing detection
   let typingTimeout = null;
