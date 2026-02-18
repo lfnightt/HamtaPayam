@@ -21,6 +21,34 @@
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
   </head>
   <body>
+    <!-- Login/Signup Page -->
+    <div id="auth-page" class="auth-page is-hidden" aria-label="Authentication">
+      <div class="auth-container">
+        <div class="auth-logo">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="100" cy="100" r="100" fill="#8774E1"/>
+            <path d="M45 100 L155 45 L120 155 L95 110 L45 100" fill="white" stroke="white" stroke-width="5" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1 class="auth-title">Sign in to HamtaPayam</h1>
+        <p class="auth-subtitle">Please enter your email<br>and enter your password.</p>
+        
+        <form class="auth-form" id="auth-form" autocomplete="off">
+          <div class="auth-input-wrap">
+            <input type="email" class="auth-input" id="auth-email" placeholder=" " required />
+            <label class="auth-label" for="auth-email">Email</label>
+            <i class="fa-solid fa-chevron-down auth-input-icon" aria-hidden="true"></i>
+          </div>
+          <div class="auth-input-wrap">
+            <input type="password" class="auth-input" id="auth-password" placeholder=" " required />
+            <label class="auth-label" for="auth-password">Password</label>
+          </div>
+          <button type="submit" class="auth-btn">SIGN IN</button>
+        </form>
+        <p class="auth-hint">Don't have an account? <a href="#" id="auth-toggle" class="auth-link">Sign up</a></p>
+      </div>
+    </div>
+
     <div class="chat-background" aria-hidden="true">
       <div class="chat-background-item is-pattern is-dark is-visible">
         <canvas width="50" height="50" data-colors="#fec496,#dd6cb9,#962fbf,#4f5bd5" class="chat-background-item-canvas chat-background-item-color-canvas chat-background-item-scalable" style="--opacity-max: 0.3;"></canvas>
